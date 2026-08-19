@@ -1,106 +1,103 @@
-import { Router, type Request, type Response } from "express"
-import { getPool } from "../db"
+import { Router, type Request, type Response } from "express";
+import { getPool } from "../db";
 
-const router = Router()
+const router = Router();
 
-// Get all customers
-router.get("/customers", async (req: Request, res: Response) => {
+// GET Customers
+router.get("/customers", async (_req: Request, res: Response) => {
   try {
-    const pool = getPool()
-    const connection = await pool.getConnection()
-    const [results] = await connection.execute("SELECT * FROM Customer")
-    connection.release()
-    res.json(results)
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch customers" })
+    const pool = getPool();
+    const [results]: any = await pool.execute("SELECT * FROM Customer");
+    res.json(results);
+  } catch (error: any) {
+    console.error("[GET /customers Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Insert new customer
+// POST Customer
 router.post("/customers", async (req: Request, res: Response) => {
   try {
-    const { cust_id, name, street, city, pincode, DOB } = req.body
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const { cust_id, name, street, city, pincode, DOB } = req.body;
+    const pool = getPool();
 
-    await connection.execute(
+    await pool.execute(
       "INSERT INTO Customer (cust_id, name, street, city, pincode, DOB) VALUES (?, ?, ?, ?, ?, ?)",
-      [cust_id, name, street, city, pincode, DOB],
-    )
+      [Number(cust_id), name, street || null, city || "Unknown", pincode || null, DOB || null]
+    );
 
-    connection.release()
-    res.status(201).json({ message: "Customer added successfully" })
-  } catch (error) {
-    res.status(500).json({ error: "Failed to add customer" })
+    res.status(201).json({ message: "Customer added successfully" });
+  } catch (error: any) {
+    console.error("[POST /customers Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Get all branches
-router.get("/branches", async (req: Request, res: Response) => {
+// GET Branches
+router.get("/branches", async (_req: Request, res: Response) => {
   try {
-    const pool = getPool()
-    const connection = await pool.getConnection()
-    const [results] = await connection.execute("SELECT * FROM Branch")
-    connection.release()
-    res.json(results)
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch branches" })
+    const pool = getPool();
+    const [results]: any = await pool.execute("SELECT * FROM Branch");
+    res.json(results);
+  } catch (error: any) {
+    console.error("[GET /branches Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Insert new branch
+// POST Branch
 router.post("/branches", async (req: Request, res: Response) => {
   try {
-    const { branch_id, name, location } = req.body
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const { branch_id, name, location } = req.body;
+    const pool = getPool();
 
-    await connection.execute("INSERT INTO Branch (branch_id, name, location) VALUES (?, ?, ?)", [
-      branch_id,
-      name,
-      location,
-    ])
+    await pool.execute(
+      "INSERT INTO Branch (branch_id, name, location) VALUES (?, ?, ?)",
+      [Number(branch_id), name, location || null]
+    );
 
-    connection.release()
-    res.status(201).json({ message: "Branch added successfully" })
-  } catch (error) {
-    res.status(500).json({ error: "Failed to add branch" })
+    res.status(201).json({ message: "Branch added successfully" });
+  } catch (error: any) {
+    console.error("[POST /branches Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Get all accounts
-router.get("/accounts", async (req: Request, res: Response) => {
+// GET Accounts (Queries 'Account' table)
+router.get("/accounts", async (_req: Request, res: Response) => {
   try {
-    const pool = getPool()
-    const connection = await pool.getConnection()
-    const [results] = await connection.execute("SELECT * FROM Account")
-    connection.release()
-    res.json(results)
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch accounts" })
+    const pool = getPool();
+    const [results]: any = await pool.execute("SELECT * FROM Account");
+    res.json(results);
+  } catch (error: any) {
+    console.error("[GET /accounts Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Insert new account
+// POST Account (Inserts into 'Account' table)
 router.post("/accounts", async (req: Request, res: Response) => {
   try {
-    const { acc_no, type, balance, cust_id, branch_id } = req.body
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const { acc_no, type, balance, cust_id, branch_id } = req.body;
+    const pool = getPool();
 
-    await connection.execute("INSERT INTO Account (acc_no, type, balance, cust_id, branch_id) VALUES (?, ?, ?, ?, ?)", [
-      acc_no,
-      type,
-      balance,
-      cust_id,
-      branch_id,
-    ])
+    await pool.execute(
+      "INSERT INTO Account (acc_no, type, balance, cust_id, branch_id) VALUES (?, ?, ?, ?, ?)",
+      [
+        Number(acc_no),
+        type,
+        Number(balance) || 0.0,
+        Number(cust_id),
+        Number(branch_id),
+      ]
+    );
 
-    connection.release()
-    res.status(201).json({ message: "Account added successfully" })
-  } catch (error) {
-    res.status(500).json({ error: "Failed to add account" })
+    res.status(201).json({ message: "Account added successfully" });
+  } catch (error: any) {
+    console.error("[POST /accounts Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-export { router as dataRoutes }
+export default router;
+export { router, router as dataRoutes };

@@ -1,104 +1,133 @@
-import { Router } from "express"
-import { getPool } from "../db"
+import { Router, type Request, type Response } from "express";
+import { getPool } from "../db";
 
-const router = Router()
+const router = Router();
 
-// Branch Profitability and Account Type Distribution
-router.get("/branch-profitability", async (req, res) => {
+// 1. Branch Dropdown Endpoint
+router.get("/branches", async (req: Request, res: Response) => {
+  let connection;
   try {
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const pool = getPool();
+    connection = await pool.getConnection();
+
+    const query = `
+      SELECT 
+        branch_id, 
+        branch_id AS id, 
+        name, 
+        location 
+      FROM Branch 
+      ORDER BY name ASC
+    `;
+
+    const [results]: any = await connection.execute(query);
+    res.json(results);
+  } catch (error: any) {
+    console.error("[Analysis Route Error - Branches]:", error.message);
+    res.status(500).json({ error: "Failed to fetch branches from database" });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// 2. Branch Account Summary (Fixes BranchSummary Component)
+router.get("/branch-summary/:branch_id", async (req: Request, res: Response) => {
+  let connection;
+  try {
+    const { branch_id } = req.params;
+    const pool = getPool();
+    connection = await pool.getConnection();
 
     const query = `
       SELECT
-          B.name AS Branch_Name,
-          SUM(A.balance) AS Total_Balance_Value,
-          COUNT(A.acc_no) AS Total_Accounts,
-          CASE
-              WHEN COUNT(A.acc_no) >= 2 THEN 'High Activity'
-              ELSE 'Low Activity'
-          END AS Activity_Level
-      FROM
-          Branch B
+        B.name AS Branch_Name,
+        B.location AS Branch_Location,
+        COUNT(A.acc_no) AS Total_Accounts,
+        COALESCE(SUM(A.balance), 0.00) AS Total_Balance_Value
+      FROM Branch B
+      LEFT JOIN Account A ON B.branch_id = A.branch_id
+      WHERE B.branch_id = ?
+      GROUP BY B.branch_id, B.name, B.location
+    `;
+
+    const [results]: any = await connection.execute(query, [branch_id]);
+
+    if (!results || results.length === 0) {
+      return res.status(404).json({ error: "Branch not found" });
+    }
+
+    res.json(results[0]);
+  } catch (error: any) {
+    console.error("[Analysis Route Error - Branch Summary]:", error.message);
+    res.status(500).json({ error: "Failed to fetch branch summary" });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// 3. Branch Profitability Route
+router.get("/branch-profitability", async (req: Request, res: Response) => {
+  let connection;
+  try {
+    const pool = getPool();
+    connection = await pool.getConnection();
+
+    const query = `
+      SELECT
+        B.name AS Branch_Name,
+        COALESCE(SUM(A.balance), 0.00) AS Total_Balance_Value,
+        COUNT(A.acc_no) AS Total_Accounts,
+        CASE 
+          WHEN COUNT(A.acc_no) >= 2 THEN 'High Activity' 
+          ELSE 'Low Activity' 
+        END AS Activity_Level
+      FROM Branch B
       LEFT JOIN Account A ON B.branch_id = A.branch_id
       GROUP BY B.branch_id, B.name
       ORDER BY Total_Balance_Value DESC
-    `
+    `;
 
-    const [results] = await connection.execute(query)
-    connection.release()
-    res.json(results)
-  } catch (error) {
-    console.error("[v0] Analysis error:", error)
-    res.status(500).json({ error: "Analysis query failed" })
+    const [results]: any = await connection.execute(query);
+    res.json(results);
+  } catch (error: any) {
+    console.error("[Analysis Route Error - Profitability]:", error.message);
+    res.status(500).json({ error: "Failed to fetch branch profitability" });
+  } finally {
+    if (connection) connection.release();
   }
-})
+});
 
-// Employee Cost and Customer Reach Analysis
-router.get("/employee-efficiency", async (req, res) => {
+// 4. Employee Cost Efficiency Route
+router.get("/employee-efficiency", async (req: Request, res: Response) => {
+  let connection;
   try {
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const pool = getPool();
+    connection = await pool.getConnection();
 
     const query = `
-      WITH BranchCustomerCounts AS (
-          SELECT A.branch_id, COUNT(DISTINCT A.cust_id) AS Total_Customers_Served
-          FROM Account A
-          GROUP BY A.branch_id
-      )
       SELECT
-          B.name AS Branch_Name,
-          SUM(E.salary) AS Total_Branch_Salary_Cost,
-          BCC.Total_Customers_Served,
-          SUM(E.salary) / BCC.Total_Customers_Served AS Cost_Per_Customer
-      FROM
-          Branch B
-      JOIN Employee E ON B.branch_id = E.branch_id
-      JOIN BranchCustomerCounts BCC ON B.branch_id = BCC.branch_id
-      GROUP BY B.branch_id, B.name, BCC.Total_Customers_Served
-      ORDER BY Cost_Per_Customer DESC
-    `
+        B.name AS Branch_Name,
+        COALESCE(SUM(E.salary), 0.00) AS Total_Branch_Salary_Cost,
+        COUNT(DISTINCT A.cust_id) AS Total_Customers_Served,
+        ROUND(
+          COALESCE(SUM(E.salary), 0.00) / NULLIF(COUNT(DISTINCT A.cust_id), 0), 2
+        ) AS Cost_Per_Customer
+      FROM Branch B
+      LEFT JOIN Employee E ON B.branch_id = E.branch_id
+      LEFT JOIN Account A ON B.branch_id = A.branch_id
+      GROUP BY B.branch_id, B.name
+      ORDER BY Branch_Name ASC
+    `;
 
-    const [results] = await connection.execute(query)
-    connection.release()
-    res.json(results)
-  } catch (error) {
-    console.error("[v0] Analysis error:", error)
-    res.status(500).json({ error: "Analysis query failed" })
+    const [results]: any = await connection.execute(query);
+    res.json(results);
+  } catch (error: any) {
+    console.error("[Analysis Route Error - Efficiency]:", error.message);
+    res.status(500).json({ error: "Failed to fetch employee efficiency metrics" });
+  } finally {
+    if (connection) connection.release();
   }
-})
+});
 
-// New endpoint to get branch account summary using stored procedure
-router.get("/branch-summary/:branchId", async (req, res) => {
-  try {
-    const { branchId } = req.params
-    const pool = getPool()
-    const connection = await pool.getConnection()
-
-    // Call the stored procedure Get_Branch_Account_Summary
-    const [results] = await connection.execute("CALL Get_Branch_Account_Summary(?)", [Number.parseInt(branchId)])
-
-    connection.release()
-
-    console.log("[v0] Stored procedure results:", JSON.stringify(results))
-
-    // The stored procedure returns results in an array of arrays, get the first result set and first row
-    const data =
-      Array.isArray(results) && results.length > 0 && Array.isArray(results[0]) && results[0].length > 0
-        ? results[0][0]
-        : null
-
-    console.log("[v0] Parsed data:", data)
-
-    if (!data) {
-      return res.status(404).json({ error: "Branch not found" })
-    }
-
-    res.json(data)
-  } catch (error) {
-    console.error("[v0] Branch summary error:", error)
-    res.status(500).json({ error: "Failed to fetch branch summary" })
-  }
-})
-
-export { router as analysisRoutes }
+export default router;
+export { router, router as analysisRoutes };

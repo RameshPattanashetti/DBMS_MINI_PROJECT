@@ -1,202 +1,103 @@
-import { Router, type Request, type Response } from "express"
-import { getPool } from "../db"
-import type { RowDataPacket } from "mysql2/promise"
+import { Router, type Request, type Response } from "express";
+import { getPool } from "../db";
 
-const router = Router()
+const router = Router();
 
-interface Account extends RowDataPacket {
-  acc_no: string
-  balance: number
-  type: string
-  cust_id: string
-}
-
-interface Transaction extends RowDataPacket {
-  trans_id: number
-}
-
-// Get account balance
+// GET /api/transactions/balance/:acc_no
 router.get("/balance/:acc_no", async (req: Request, res: Response) => {
   try {
-    const { acc_no } = req.params
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const { acc_no } = req.params;
+    const pool = getPool();
 
-    const [results] = await connection.execute<Account[]>(
-      "SELECT acc_no, balance, type, cust_id FROM Account WHERE acc_no = ?",
-      [acc_no],
-    )
+    const [rows]: any = await pool.execute(
+      "SELECT acc_no, balance, type FROM Account WHERE acc_no = ?",
+      [Number(acc_no)]
+    );
 
-    connection.release()
-
-    if (!Array.isArray(results) || results.length === 0) {
-      return res.status(404).json({ error: "Account not found" })
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "Account not found" });
     }
 
-    res.json(results[0])
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch balance" })
+    res.json(rows[0]);
+  } catch (error: any) {
+    console.error("[GET /balance Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Deposit money
+// POST /api/transactions/deposit
 router.post("/deposit", async (req: Request, res: Response) => {
   try {
-    const { acc_no, amount } = req.body
-    console.log("[v0] Deposit request received:", { acc_no, amount, timestamp: new Date().toISOString() })
+    const { acc_no, amount, mode } = req.body;
+    const depositAmt = Number(amount);
+    const pool = getPool();
 
-    // Validation
-    if (!acc_no || !amount || amount <= 0) {
-      return res.status(400).json({ error: "Invalid account number or amount" })
+    if (!depositAmt || depositAmt <= 0) {
+      return res.status(400).json({ error: "Amount must be greater than zero" });
     }
 
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const [result]: any = await pool.execute(
+      "UPDATE Account SET balance = balance + ? WHERE acc_no = ?",
+      [depositAmt, Number(acc_no)]
+    );
 
-    try {
-      await connection.beginTransaction()
-
-      const [accountResults] = await connection.execute<Account[]>(
-        "SELECT balance FROM Account WHERE acc_no = ? LIMIT 1 FOR UPDATE",
-        [acc_no],
-      )
-
-      if (!Array.isArray(accountResults) || accountResults.length === 0) {
-        await connection.rollback()
-        return res.status(404).json({ error: "Account not found" })
-      }
-
-      const currentBalance = Number(accountResults[0].balance)
-      console.log("[v0] Current balance:", { acc_no, currentBalance })
-
-      // Get the next transaction ID
-      const [transResults] = await connection.execute<Transaction[]>(
-        "SELECT IFNULL(MAX(trans_id), 0) + 1 as next_id FROM Transaction WHERE acc_no = ? LIMIT 1",
-        [acc_no],
-      )
-
-      let transId = 1
-      if (Array.isArray(transResults) && transResults.length > 0) {
-        transId = Number((transResults[0] as any).next_id) || 1
-      }
-
-      // Insert transaction record
-      const insertResult = await connection.execute(
-        "INSERT INTO Transaction (acc_no, trans_id, amount, type, mode, date) VALUES (?, ?, ?, ?, ?, NOW())",
-        [acc_no, transId, amount, "Deposit", "Online"],
-      )
-      console.log("[v0] Transaction inserted:", {
-        acc_no,
-        transId,
-        amount,
-        insertResult: (insertResult[0] as any).affectedRows,
-      })
-
-      await connection.commit()
-
-      // Fetch the updated balance to return
-      const [updatedResults] = await connection.execute<Account[]>(
-        "SELECT balance FROM Account WHERE acc_no = ? LIMIT 1",
-        [acc_no],
-      )
-
-      const updatedBalance = Array.isArray(updatedResults) ? Number(updatedResults[0].balance) : currentBalance + amount
-      console.log("[v0] Final balance:", { acc_no, updatedBalance })
-
-      res.json({ message: "Deposit successful", newBalance: updatedBalance, amount })
-    } catch (error) {
-      await connection.rollback()
-      throw error
-    } finally {
-      connection.release()
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Account not found" });
     }
-  } catch (error) {
-    console.error("[v0] Deposit error:", error)
-    res.status(500).json({ error: "Deposit failed" })
+
+    const trans_id = Math.floor(Math.random() * 1000000);
+    await pool.execute(
+      "INSERT INTO Transaction (acc_no, trans_id, amount, type, mode) VALUES (?, ?, ?, 'Deposit', ?)",
+      [Number(acc_no), trans_id, depositAmt, mode || "Branch"]
+    );
+
+    res.json({ message: "Deposit successful" });
+  } catch (error: any) {
+    console.error("[POST /deposit Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-// Withdraw money
+// POST /api/transactions/withdraw
 router.post("/withdraw", async (req: Request, res: Response) => {
   try {
-    const { acc_no, amount } = req.body
-    console.log("[v0] Withdraw request received:", { acc_no, amount, timestamp: new Date().toISOString() })
+    const { acc_no, amount, mode } = req.body;
+    const withdrawAmt = Number(amount);
+    const pool = getPool();
 
-    // Validation
-    if (!acc_no || !amount || amount <= 0) {
-      return res.status(400).json({ error: "Invalid account number or amount" })
+    if (!withdrawAmt || withdrawAmt <= 0) {
+      return res.status(400).json({ error: "Amount must be greater than zero" });
     }
 
-    const pool = getPool()
-    const connection = await pool.getConnection()
+    const [rows]: any = await pool.execute(
+      "SELECT balance FROM Account WHERE acc_no = ?",
+      [Number(acc_no)]
+    );
 
-    try {
-      await connection.beginTransaction()
-
-      const [accountResults] = await connection.execute<Account[]>(
-        "SELECT balance FROM Account WHERE acc_no = ? LIMIT 1 FOR UPDATE",
-        [acc_no],
-      )
-
-      if (!Array.isArray(accountResults) || accountResults.length === 0) {
-        await connection.rollback()
-        return res.status(404).json({ error: "Account not found" })
-      }
-
-      const currentBalance = Number(accountResults[0].balance)
-      console.log("[v0] Current balance:", { acc_no, currentBalance })
-
-      // Check if sufficient balance
-      if (currentBalance < amount) {
-        await connection.rollback()
-        return res.status(400).json({ error: "Insufficient balance" })
-      }
-
-      // Get the next transaction ID
-      const [transResults] = await connection.execute<Transaction[]>(
-        "SELECT IFNULL(MAX(trans_id), 0) + 1 as next_id FROM Transaction WHERE acc_no = ? LIMIT 1",
-        [acc_no],
-      )
-
-      let transId = 1
-      if (Array.isArray(transResults) && transResults.length > 0) {
-        transId = Number((transResults[0] as any).next_id) || 1
-      }
-
-      // Insert transaction record
-      const insertResult = await connection.execute(
-        "INSERT INTO Transaction (acc_no, trans_id, amount, type, mode, date) VALUES (?, ?, ?, ?, ?, NOW())",
-        [acc_no, transId, amount, "Withdrawal", "Online"],
-      )
-      console.log("[v0] Transaction inserted:", {
-        acc_no,
-        transId,
-        amount,
-        insertResult: (insertResult[0] as any).affectedRows,
-      })
-
-      await connection.commit()
-
-      // Fetch the updated balance to return
-      const [updatedResults] = await connection.execute<Account[]>(
-        "SELECT balance FROM Account WHERE acc_no = ? LIMIT 1",
-        [acc_no],
-      )
-
-      const updatedBalance = Array.isArray(updatedResults) ? Number(updatedResults[0].balance) : currentBalance - amount
-      console.log("[v0] Final balance:", { acc_no, updatedBalance })
-
-      res.json({ message: "Withdrawal successful", newBalance: updatedBalance, amount })
-    } catch (error) {
-      await connection.rollback()
-      throw error
-    } finally {
-      connection.release()
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "Account not found" });
     }
-  } catch (error) {
-    console.error("[v0] Withdraw error:", error)
-    res.status(500).json({ error: "Withdrawal failed" })
+
+    if (Number(rows[0].balance) < withdrawAmt) {
+      return res.status(400).json({ error: "Insufficient balance" });
+    }
+
+    await pool.execute(
+      "UPDATE Account SET balance = balance - ? WHERE acc_no = ?",
+      [withdrawAmt, Number(acc_no)]
+    );
+
+    const trans_id = Math.floor(Math.random() * 1000000);
+    await pool.execute(
+      "INSERT INTO Transaction (acc_no, trans_id, amount, type, mode) VALUES (?, ?, ?, 'Withdrawal', ?)",
+      [Number(acc_no), trans_id, withdrawAmt, mode || "Branch"]
+    );
+
+    res.json({ message: "Withdrawal successful" });
+  } catch (error: any) {
+    console.error("[POST /withdraw Error]:", error.message);
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-export { router as transactionRoutes }
+export default router;

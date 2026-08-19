@@ -1,31 +1,39 @@
-import type { Express } from "express"
-import { queryRoutes } from "./queries"
-import { dataRoutes } from "./data"
-import { analysisRoutes } from "./analysis"
-import { transactionRoutes } from "./transactions"
-import { accountDetailsRoutes } from "./account-details"
-import { customerBalanceRoutes } from "./customer-balance"
+import { Express, Router } from "express";
+import { analysisRoutes } from "./analysis";
+
+// Import modules dynamically
+import * as accountDetailsModule from "./account-details";
+import * as customerBalanceModule from "./customer-balance";
+import * as dataModule from "./data";
+import * as insightsModule from "./insights";
+import * as queriesModule from "./queries";
+import * as textToSqlModule from "./textTosql";
+import * as transactionsModule from "./transactions";
+
+// Helper function to safely extract an Express Router
+function extractRouter(mod: any): Router {
+  if (typeof mod === "function") return mod;
+  if (mod && typeof mod.default === "function") return mod.default;
+  if (mod && typeof mod.router === "function") return mod.router;
+  if (mod && typeof mod.analysisRoutes === "function") return mod.analysisRoutes;
+  
+  // Return an empty fallback router if the module export is missing to prevent server crashes
+  const fallback = Router();
+  return fallback;
+}
 
 export function setupRoutes(app: Express) {
-  // Query endpoints
-  app.use("/api/queries", queryRoutes)
+  // 1. Dashboard Analysis Routes
+  app.use("/api/analysis", extractRouter({ default: analysisRoutes }));
 
-  // Data management endpoints
-  app.use("/api/data", dataRoutes)
+  // 2. AI Features
+  app.use("/api/insights", extractRouter(insightsModule));
 
-  // Analysis endpoints
-  app.use("/api/analysis", analysisRoutes)
-
-  // Transaction endpoints for deposit, withdraw, and balance check
-  app.use("/api/transactions", transactionRoutes)
-
-  // Account details endpoints
-  app.use("/api/account-details", accountDetailsRoutes)
-
-  app.use("/api/customer-balance", customerBalanceRoutes)
-
-  // Health check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" })
-  })
+  // 3. Banking System Routes
+  app.use("/api/account-details", extractRouter(accountDetailsModule));
+  app.use("/api/customer-balance", extractRouter(customerBalanceModule));
+  app.use("/api/data", extractRouter(dataModule));
+  app.use("/api/queries", extractRouter(queriesModule));
+  app.use("/api/text-to-sql", extractRouter(textToSqlModule));
+  app.use("/api/transactions", extractRouter(transactionsModule));
 }

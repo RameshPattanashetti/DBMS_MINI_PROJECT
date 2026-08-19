@@ -1,6 +1,6 @@
-import mysql from "mysql2/promise"
+import mysql from "mysql2/promise";
 
-const pool = mysql.createPool({
+export const pool = mysql.createPool({
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "ramesh21146D",
@@ -8,29 +8,32 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-})
+});
+
+// Export alias for db
+export const db = pool;
 
 export async function initializeDatabase() {
   try {
-    const connection = await pool.getConnection()
-    console.log("[v0] Database connected successfully")
-    connection.release()
+    const connection = await pool.getConnection();
+    console.log("[v0] Database connected successfully");
+    connection.release();
   } catch (error) {
-    console.error("[v0] Database connection error:", error)
-    throw error
+    console.error("[v0] Database connection error:", error);
+    throw error;
   }
 }
 
 export function getPool() {
-  return pool
+  return pool;
 }
 
 export async function executeQuery(query: string, values?: any[]) {
-  const connection = await pool.getConnection()
+  const connection = await pool.getConnection();
   try {
-    const [results] = await connection.execute(query, values || [])
-    return results
+    const [results] = await connection.execute(query, values || []);
+    return results;
   } finally {
-    connection.release()
+    connection.release();
   }
 }

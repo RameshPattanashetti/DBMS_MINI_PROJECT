@@ -55,20 +55,32 @@ export default function QueryExecutor() {
       setError(null)
       setSelectedQuery(query)
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${query.endpoint}`, {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+      const url = `${baseUrl.replace(/\/$/, "")}${query.endpoint}`
+
+      const response = await fetch(url, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
 
       if (!response.ok) {
-        throw new Error(`Query failed: ${response.statusText}`)
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.error || `Query failed with status ${response.status}`)
       }
 
       const data = await response.json()
-      setResults(data)
-      console.log("[v0] Query results:", data)
+      
+      // Ensure data is an array before setting state
+      if (Array.isArray(data)) {
+        setResults(data)
+      } else {
+        setResults([])
+        setError("Unexpected response format from server")
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Query execution failed")
-      console.error("[v0] Query error:", err)
       setResults([])
     } finally {
       setLoading(false)
@@ -101,7 +113,7 @@ export default function QueryExecutor() {
         </div>
       </div>
 
-      {/* Results */}
+      {/* Results Section */}
       {error && <div className="bg-destructive/10 border border-destructive text-destructive p-4 rounded">{error}</div>}
 
       {loading && (
@@ -119,7 +131,7 @@ export default function QueryExecutor() {
                 <tr className="border-b border-border">
                   {Object.keys(results[0]).map((key) => (
                     <th key={key} className="text-left py-3 px-4 text-foreground/80 font-semibold">
-                      {key}
+                      {key.replace(/_/g, " ")}
                     </th>
                   ))}
                 </tr>
@@ -129,7 +141,7 @@ export default function QueryExecutor() {
                   <tr key={idx} className="border-b border-border/50 hover:bg-background/50 transition">
                     {Object.values(row).map((val, cidx) => (
                       <td key={cidx} className="py-3 px-4 text-foreground">
-                        {typeof val === "number" ? val.toLocaleString() : String(val)}
+                        {typeof val === "number" ? val.toLocaleString("en-IN") : String(val ?? "N/A")}
                       </td>
                     ))}
                   </tr>

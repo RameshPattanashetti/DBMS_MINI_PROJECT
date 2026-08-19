@@ -1,14 +1,10 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { AlertCircle, CheckCircle, Eye, EyeOff } from "lucide-react"
 
-interface ValidationError {
-  field: string
-  message: string
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 
 export default function AccountForm() {
   const [formData, setFormData] = useState({
@@ -21,68 +17,45 @@ export default function AccountForm() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState("")
   const [messageType, setMessageType] = useState<"success" | "error" | null>(null)
-  const [errors, setErrors] = useState<ValidationError[]>([])
   const [showRecords, setShowRecords] = useState(false)
   const [records, setRecords] = useState<any[]>([])
-
-  const validateForm = (): boolean => {
-    const newErrors: ValidationError[] = []
-
-    if (!formData.acc_no || Number(formData.acc_no) <= 0) {
-      newErrors.push({ field: "acc_no", message: "Account number must be a positive number" })
-    }
-    if (!formData.balance || Number(formData.balance) < 0) {
-      newErrors.push({ field: "balance", message: "Balance must be a non-negative number" })
-    }
-    if (!formData.cust_id || Number(formData.cust_id) <= 0) {
-      newErrors.push({ field: "cust_id", message: "Customer ID must be a positive number" })
-    }
-    if (!formData.branch_id || Number(formData.branch_id) <= 0) {
-      newErrors.push({ field: "branch_id", message: "Branch ID must be a positive number" })
-    }
-
-    setErrors(newErrors)
-    return newErrors.length === 0
-  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
-    setErrors((prev) => prev.filter((err) => err.field !== name))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!validateForm()) {
-      return
-    }
+    setLoading(true)
+    setMessage("")
 
     try {
-      setLoading(true)
-      setMessage("")
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/data/accounts`, {
+      const response = await fetch(`${API_BASE}/api/data/accounts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...formData,
-          balance: Number.parseFloat(formData.balance),
-          cust_id: Number.parseInt(formData.cust_id),
-          branch_id: Number.parseInt(formData.branch_id),
+          acc_no: Number(formData.acc_no),
+          type: formData.type,
+          balance: Number.parseFloat(formData.balance) || 0,
+          cust_id: Number(formData.cust_id),
+          branch_id: Number(formData.branch_id),
         }),
       })
 
-      if (!response.ok) throw new Error("Failed to add account")
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to add account")
+      }
 
       setMessageType("success")
       setMessage("Account added successfully!")
       setFormData({ acc_no: "", type: "Savings", balance: "", cust_id: "", branch_id: "" })
-      setTimeout(() => setMessage(""), 3000)
-    } catch (err) {
+      if (showRecords) fetchRecords()
+    } catch (err: any) {
       setMessageType("error")
-      setMessage("Error adding account")
-      console.error("[v0] Account form error:", err)
+      setMessage(err.message || "Error adding account")
     } finally {
       setLoading(false)
     }
@@ -90,43 +63,40 @@ export default function AccountForm() {
 
   const fetchRecords = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/data/accounts`)
-      if (!response.ok) throw new Error("Failed to fetch records")
+      const response = await fetch(`${API_BASE}/api/data/accounts`)
       const data = await response.json()
-      setRecords(data)
-      setShowRecords(true)
+      if (Array.isArray(data)) {
+        setRecords(data)
+        setShowRecords(true)
+      }
     } catch (err) {
-      console.error("[v0] Error fetching account records:", err)
+      console.error("Error fetching account records:", err)
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Form Section */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Account Number *</label>
+          <label className="block text-sm font-medium mb-1">Account Number *</label>
           <input
             type="number"
             name="acc_no"
-            placeholder="Enter account number"
+            placeholder="e.g. 1001"
             value={formData.acc_no}
             onChange={handleChange}
             required
-            className="w-full px-3 py-2 bg-background border border-border rounded text-foreground placeholder-foreground/40 focus:border-primary focus:outline-none transition"
+            className="w-full px-3 py-2 border rounded bg-background"
           />
-          {errors.find((e) => e.field === "acc_no") && (
-            <p className="text-destructive text-xs mt-1">{errors.find((e) => e.field === "acc_no")?.message}</p>
-          )}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Account Type *</label>
+          <label className="block text-sm font-medium mb-1">Account Type *</label>
           <select
             name="type"
             value={formData.type}
             onChange={handleChange}
-            className="w-full px-3 py-2 bg-background border border-border rounded text-foreground focus:border-primary focus:outline-none transition"
+            className="w-full px-3 py-2 border rounded bg-background"
           >
             <option value="Savings">Savings</option>
             <option value="Current">Current</option>
@@ -136,52 +106,43 @@ export default function AccountForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Initial Balance *</label>
+          <label className="block text-sm font-medium mb-1">Initial Balance *</label>
           <input
             type="number"
             step="0.01"
             name="balance"
-            placeholder="Enter initial balance"
+            placeholder="0.00"
             value={formData.balance}
             onChange={handleChange}
             required
-            className="w-full px-3 py-2 bg-background border border-border rounded text-foreground placeholder-foreground/40 focus:border-primary focus:outline-none transition"
+            className="w-full px-3 py-2 border rounded bg-background"
           />
-          {errors.find((e) => e.field === "balance") && (
-            <p className="text-destructive text-xs mt-1">{errors.find((e) => e.field === "balance")?.message}</p>
-          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Customer ID *</label>
+            <label className="block text-sm font-medium mb-1">Customer ID *</label>
             <input
               type="number"
               name="cust_id"
-              placeholder="Enter customer ID"
+              placeholder="e.g. 1"
               value={formData.cust_id}
               onChange={handleChange}
               required
-              className="w-full px-3 py-2 bg-background border border-border rounded text-foreground placeholder-foreground/40 focus:border-primary focus:outline-none transition"
+              className="w-full px-3 py-2 border rounded bg-background"
             />
-            {errors.find((e) => e.field === "cust_id") && (
-              <p className="text-destructive text-xs mt-1">{errors.find((e) => e.field === "cust_id")?.message}</p>
-            )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Branch ID *</label>
+            <label className="block text-sm font-medium mb-1">Branch ID *</label>
             <input
               type="number"
               name="branch_id"
-              placeholder="Enter branch ID"
+              placeholder="e.g. 1"
               value={formData.branch_id}
               onChange={handleChange}
               required
-              className="w-full px-3 py-2 bg-background border border-border rounded text-foreground placeholder-foreground/40 focus:border-primary focus:outline-none transition"
+              className="w-full px-3 py-2 border rounded bg-background"
             />
-            {errors.find((e) => e.field === "branch_id") && (
-              <p className="text-destructive text-xs mt-1">{errors.find((e) => e.field === "branch_id")?.message}</p>
-            )}
           </div>
         </div>
 
@@ -189,8 +150,8 @@ export default function AccountForm() {
           <div
             className={`flex items-center gap-2 p-3 rounded text-sm ${
               messageType === "success"
-                ? "bg-accent/10 text-accent border border-accent"
-                : "bg-destructive/10 text-destructive border border-destructive"
+                ? "bg-green-500/10 text-green-600 border border-green-500"
+                : "bg-red-500/10 text-red-600 border border-red-500"
             }`}
           >
             {messageType === "success" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
@@ -202,14 +163,17 @@ export default function AccountForm() {
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
+            className="flex-1 px-4 py-2 bg-primary text-white rounded font-medium disabled:opacity-50"
           >
             {loading ? "Adding..." : "Add Account"}
           </button>
           <button
             type="button"
-            onClick={fetchRecords}
-            className="px-4 py-2 bg-background border border-border text-foreground rounded hover:bg-background/80 transition flex items-center gap-2"
+            onClick={() => {
+              if (showRecords) setShowRecords(false)
+              else fetchRecords()
+            }}
+            className="px-4 py-2 border rounded flex items-center gap-2"
           >
             {showRecords ? <EyeOff size={16} /> : <Eye size={16} />}
             {showRecords ? "Hide" : "View"} Records
@@ -217,16 +181,15 @@ export default function AccountForm() {
         </div>
       </form>
 
-      {/* Records Section */}
       {showRecords && records.length > 0 && (
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h3 className="text-lg font-bold text-foreground mb-4">Account Records</h3>
+        <div className="border rounded-lg p-4 bg-card">
+          <h3 className="font-bold mb-3">Account Records</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border">
+                <tr className="border-b">
                   {Object.keys(records[0]).map((key) => (
-                    <th key={key} className="text-left py-3 px-4 text-foreground/80 font-semibold">
+                    <th key={key} className="text-left py-2 px-3 font-semibold">
                       {key}
                     </th>
                   ))}
@@ -234,10 +197,10 @@ export default function AccountForm() {
               </thead>
               <tbody>
                 {records.map((row, idx) => (
-                  <tr key={idx} className="border-b border-border/50 hover:bg-background/50 transition">
-                    {Object.values(row).map((val, cidx) => (
-                      <td key={cidx} className="py-3 px-4 text-foreground">
-                        {typeof val === "number" ? val.toLocaleString() : String(val)}
+                  <tr key={idx} className="border-b hover:bg-muted/50">
+                    {Object.values(row).map((val: any, cidx) => (
+                      <td key={cidx} className="py-2 px-3">
+                        {String(val)}
                       </td>
                     ))}
                   </tr>
@@ -245,7 +208,6 @@ export default function AccountForm() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 text-sm text-foreground/60">Total records: {records.length}</div>
         </div>
       )}
     </div>

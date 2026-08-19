@@ -1,11 +1,12 @@
 import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
+import ChatDrawer from "@/components/chatDrawer"
 
 export const metadata: Metadata = {
   title: "Bank Management System",
   description: "DBMS Mini Project - Bank Management Dashboard",
-    generator: 'v0.app'
+  generator: 'v0.app'
 }
 
 export default function RootLayout({
@@ -15,7 +16,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-background text-foreground">{children}</body>
+      <body className="bg-background text-foreground">
+        {children}
+        <ChatDrawer />
+      </body>
     </html>
   )
 }
